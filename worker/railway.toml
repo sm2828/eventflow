@@ -1,0 +1,7 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "worker/Dockerfile"
+
+[deploy]
+startCommand = "node dist/worker/src/index.js"
+restartPolicyType = "on_failure"
