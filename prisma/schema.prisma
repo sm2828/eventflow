@@ -1,0 +1,96 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id                 String      @id @default(uuid())
+  type               String
+  source             String      @default("api")
+  payload            Json
+  status             EventStatus @default(QUEUED)
+  apiKeyId           String?
+  attempts           Int         @default(0)
+  jobId              String?     @unique
+
+  // Lifecycle timestamps
+  queuedAt           DateTime?
+  processingStartedAt DateTime?
+  processedAt        DateTime?
+
+  // Error info
+  errorMessage       String?
+  errorStack         String?
+
+  // Replay metadata
+  replayOf           String?     // original event ID if this is a replay
+  replayCount        Int         @default(0)  // how many times this event has been replayed
+
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  // Relations
+  logs               EventLog[]
+
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@index([apiKeyId])
+  @@index([replayOf])
+
+  @@map("events")
+}
+
+// One record per processing attempt — full audit trail
+model EventLog {
+  id          String   @id @default(uuid())
+  eventId     String
+  attempt     Int
+  status      EventStatus
+  message     String?
+  errorStack  String?
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("event_logs")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  isActive    Boolean  @default(true)
+  rateLimit   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@map("api_keys")
+}
+
+model Metric {
+  id        String   @id @default(uuid())
+  name      String
+  value     Float
+  labels    Json?
+  timestamp DateTime @default(now())
+
+  @@index([name, timestamp])
+  @@map("metrics")
+}
+
+enum EventStatus {
+  QUEUED
+  PROCESSING
+  SUCCESS
+  FAILED
+  DEAD_LETTERED
+}

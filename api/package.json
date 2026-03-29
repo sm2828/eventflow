@@ -1,0 +1,33 @@
+{
+  "name": "@eventflow/api",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate --schema=../prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema=../prisma/schema.prisma",
+    "db:studio": "prisma studio --schema=../prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.11.0",
+    "bullmq": "^5.4.0",
+    "express": "^4.18.3",
+    "express-rate-limit": "^7.2.0",
+    "ioredis": "^5.3.2",
+    "zod": "^3.22.4",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-async-errors": "^3.1.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.0",
+    "@types/uuid": "^9.0.8",
+    "prisma": "^5.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

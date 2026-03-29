@@ -1,0 +1,14 @@
+{
+  "name": "eventflow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "cd api && npm run dev",
+    "dev:worker": "cd worker && npm run dev",
+    "dev:dashboard": "cd dashboard && npm run dev",
+    "install:all": "npm install && cd api && npm install && cd ../worker && npm install && cd ../dashboard && npm install",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "seed": "cd api && npx tsx ../prisma/seed.ts"
+  }
+}
