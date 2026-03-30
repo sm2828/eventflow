@@ -7,20 +7,49 @@ import { QUEUE_NAMES, EventJobData } from "../../../shared/src/types/queue";
 
 const logger = createLogger("queue");
 
-// BullMQ manages this connection internally — do NOT call .connect() on it manually.
-// lazyConnect:true prevents it auto-connecting before BullMQ is ready.
-export const redisConnection = new IORedis(config.redis.url, {
-  maxRetriesPerRequest: null, // Required by BullMQ
-  enableReadyCheck: false,    // Required by BullMQ
-  lazyConnect: true,
-});
+// Upstash (and other TLS Redis providers) use rediss:// URLs.
+// IORedis needs explicit tls:{} options when connecting over TLS,
+// otherwise it connects, immediately gets a TLS error, and closes.
+function buildConnectionOptions(url: string): ConstructorParameters<typeof IORedis>[1] {
+  const isTLS = url.startsWith("rediss://");
+  return {
+    maxRetriesPerRequest: null, // Required by BullMQ
+    enableReadyCheck: false,    // Required by BullMQ
+    lazyConnect: true,
+    ...(isTLS && {
+      tls: {
+        // Upstash certs are valid — rejectUnauthorized:true is safe and correct
+        rejectUnauthorized: true,
+      },
+    }),
+  };
+}
 
-// Separate lightweight client for health checks — we manage this one ourselves.
-export const redisClient = new IORedis(config.redis.url, {
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: true,
-  lazyConnect: true,          // We call .connect() explicitly in connectQueue()
-});
+function buildClientOptions(url: string): ConstructorParameters<typeof IORedis>[1] {
+  const isTLS = url.startsWith("rediss://");
+  return {
+    maxRetriesPerRequest: 3,
+    enableReadyCheck: true,
+    lazyConnect: true,
+    ...(isTLS && {
+      tls: {
+        rejectUnauthorized: true,
+      },
+    }),
+  };
+}
+
+// BullMQ manages this connection — do NOT call .connect() on it manually.
+export const redisConnection = new IORedis(
+  config.redis.url,
+  buildConnectionOptions(config.redis.url)
+);
+
+// Separate client for health checks — we manage this one ourselves.
+export const redisClient = new IORedis(
+  config.redis.url,
+  buildClientOptions(config.redis.url)
+);
 
 redisConnection.on("connect", () => logger.info("Redis (queue) connected"));
 redisConnection.on("error", (err) =>
@@ -31,7 +60,6 @@ redisClient.on("error", (err) =>
   logger.error("Redis (client) error", { error: String(err) })
 );
 
-// BullMQ Queue objects — BullMQ calls .connect() on redisConnection itself.
 export const eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
   connection: redisConnection,
   defaultJobOptions: config.queue.defaultJobOptions,
@@ -42,7 +70,6 @@ export const deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, 
 });
 
 export async function connectQueue(): Promise<void> {
-  // Only connect the health-check client — BullMQ handles redisConnection.
   await redisClient.connect();
   logger.info("Queue system ready", {
     queue: QUEUE_NAMES.EVENTS,
