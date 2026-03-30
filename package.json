@@ -10,5 +10,11 @@
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "seed": "cd api && npx tsx ../prisma/seed.ts"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
   }
 }

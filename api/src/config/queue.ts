@@ -1,6 +1,6 @@
 // api/src/config/queue.ts
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
+import IORedis, { type RedisOptions } from "ioredis";
 import { config } from "./index";
 import { createLogger } from "../../../shared/src/utils/logger";
 import { QUEUE_NAMES, EventJobData } from "../../../shared/src/types/queue";
@@ -10,7 +10,7 @@ const logger = createLogger("queue");
 // Upstash (and other TLS Redis providers) use rediss:// URLs.
 // IORedis needs explicit tls:{} options when connecting over TLS,
 // otherwise it connects, immediately gets a TLS error, and closes.
-function buildConnectionOptions(url: string): ConstructorParameters<typeof IORedis>[1] {
+function buildConnectionOptions(url: string): RedisOptions {
   const isTLS = url.startsWith("rediss://");
   return {
     maxRetriesPerRequest: null, // Required by BullMQ
@@ -25,7 +25,7 @@ function buildConnectionOptions(url: string): ConstructorParameters<typeof IORed
   };
 }
 
-function buildClientOptions(url: string): ConstructorParameters<typeof IORedis>[1] {
+function buildClientOptions(url: string): RedisOptions {
   const isTLS = url.startsWith("rediss://");
   return {
     maxRetriesPerRequest: 3,
