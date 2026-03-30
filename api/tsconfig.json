@@ -11,6 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "../shared/src/**/*"],
+  "include": [
+    "src/**/*",
+    "../shared/src/**/*"
+  ],
   "exclude": ["node_modules", "dist", "../worker", "../dashboard"]
 }

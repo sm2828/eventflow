@@ -3,6 +3,7 @@ import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { PrismaClient } from "@prisma/client";
 import { config } from "./config";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { connectQueue, disconnectQueue } from "./config/queue";
@@ -13,20 +14,19 @@ import { createLogger } from "../../shared/src/utils/logger";
 
 const logger = createLogger("api");
 
+// INLINE_WORKER=true  → run the BullMQ worker inside this process (Render free tier)
+// INLINE_WORKER=false → API only, worker runs as a separate service (local Docker Compose)
+const RUN_INLINE_WORKER = process.env.INLINE_WORKER === "true";
+
 async function bootstrap() {
-  // Connect dependencies
   await connectDatabase();
   await connectQueue();
 
   const app = express();
 
-  // Security & parsing middleware
   app.use(helmet());
   app.use(
     cors({
-      // CORS_ORIGINS = comma-separated list of allowed origins
-      // e.g. "https://eventflow.vercel.app,http://localhost:5173"
-      // Leave unset to allow all origins (fine for a public portfolio API)
       origin: process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
         : "*",
@@ -37,38 +37,43 @@ async function bootstrap() {
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: false }));
 
-  // Request logging middleware
   app.use((req, _res, next) => {
-    logger.debug("Incoming request", {
-      method: req.method,
-      path: req.path,
-      ip: req.ip,
-    });
+    logger.debug("Incoming request", { method: req.method, path: req.path, ip: req.ip });
     next();
   });
 
-  // Routes
   app.use("/", healthRouter);
   app.use("/events", eventsRouter);
 
-  // 404 handler
   app.use((_req, res) => {
     res.status(404).json({ error: "Not Found", message: "Route does not exist." });
   });
 
-  // Global error handler (must be last)
   app.use(errorHandler);
 
   const server = app.listen(config.port, () => {
-    logger.info("API server started", {
-      port: config.port,
-      env: config.env,
-    });
+    logger.info("API server started", { port: config.port, env: config.env });
   });
 
-  // Graceful shutdown
+  // Start inline worker if configured (Render free tier)
+  let workerShutdown: (() => Promise<void>) | null = null;
+  if (RUN_INLINE_WORKER) {
+    // Lazy import so Docker Compose deployments never load worker code
+    const { startInlineWorker } = await import("./worker");
+    const prisma = new PrismaClient();
+    await prisma.$connect();
+    const w = await startInlineWorker(prisma);
+    workerShutdown = w.shutdown;
+    logger.info("Inline worker started alongside API");
+  }
+
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received — shutting down gracefully`);
+
+    if (workerShutdown) {
+      await workerShutdown();
+    }
+
     server.close(async () => {
       await disconnectDatabase();
       await disconnectQueue();
@@ -76,7 +81,6 @@ async function bootstrap() {
       process.exit(0);
     });
 
-    // Force exit after 10 seconds
     setTimeout(() => {
       logger.error("Forced shutdown after timeout");
       process.exit(1);
@@ -84,7 +88,7 @@ async function bootstrap() {
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGINT",  () => shutdown("SIGINT"));
   process.on("uncaughtException", (err) => {
     logger.error("Uncaught exception", { error: err.message, stack: err.stack });
     process.exit(1);

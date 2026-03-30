@@ -6,41 +6,37 @@ function requireEnv(key: string): string {
   return value;
 }
 
+function parseCsv(value: string): string[] {
+  return value
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
 export const config = {
   env: process.env.NODE_ENV || "development",
-  port: parseInt(process.env.PORT || "3000", 10),
 
-  database: {
-    url: requireEnv("DATABASE_URL"),
-  },
+  port: parseInt(process.env.PORT || "3000", 10),
 
   redis: {
     url: requireEnv("REDIS_URL"),
   },
 
   auth: {
-    // Comma-separated list of valid API keys
-    apiKeys: new Set(
-      (process.env.API_KEYS || "dev_key_123").split(",").map((k) => k.trim())
-    ),
+    apiKeys: new Set(parseCsv(process.env.API_KEYS || "")),
   },
 
   rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10),
     max: parseInt(process.env.RATE_LIMIT_MAX || "100", 10),
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10),
   },
 
   queue: {
-    name: "events",
-    deadLetterName: "events-dead-letter",
     defaultJobOptions: {
+      removeOnComplete: 500,
+      removeOnFail: 500,
       attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 1000, // 1s, 2s, 4s
-      },
-      removeOnComplete: { count: 1000 }, // Keep last 1000 completed jobs
-      removeOnFail: { count: 500 },      // Keep last 500 failed jobs
+      backoff: { type: "exponential", delay: 1000 },
     },
   },
 } as const;
