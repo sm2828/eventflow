@@ -18,8 +18,9 @@ function buildConnectionOptions(url: string): RedisOptions {
     // Connect only from connectQueue() after DB — avoids overlapping with Prisma startup
     // and matches most managed-Redis docs (single client, on-demand connect).
     lazyConnect: true,
-    connectTimeout: 15_000,
-    commandTimeout: 12_000,
+    connectTimeout: 20_000,
+    // No commandTimeout: on flaky reconnects it aborts PING mid-handshake and surfaces as
+    // "Command timed out" (ioredis Command.js) instead of completing or our outer deadline firing.
     // Stop endless reconnect storms (bad REDIS_URL wastes deploy health checks).
     retryStrategy(times: number) {
       if (times > 30) return null;
@@ -53,7 +54,7 @@ export let deadLetterQueue!: Queue<EventJobData>;
 
 let queuesCreated = false;
 
-const PING_DEADLINE_MS = 25_000;
+const REDIS_READY_DEADLINE_MS = 45_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -78,7 +79,9 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 export async function connectQueue(): Promise<void> {
-  await withTimeout(redisConnection.ping(), PING_DEADLINE_MS, "Redis PING");
+  // connect() waits until ioredis is "ready" (TLS + AUTH + handshake), unlike bare ping under churn.
+  await withTimeout(redisConnection.connect(), REDIS_READY_DEADLINE_MS, "Redis connect");
+  await redisConnection.ping();
   eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
     connection: redisConnection,
     defaultJobOptions: config.queue.defaultJobOptions,
