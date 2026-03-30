@@ -1,42 +1,42 @@
 // api/src/config/queue.ts
 import { Queue } from "bullmq";
 import IORedis, { type RedisOptions } from "ioredis";
-import { URL } from "url";
 import { config } from "./index";
 import { createLogger } from "../../../shared/src/utils/logger";
 import { QUEUE_NAMES, EventJobData } from "../../../shared/src/types/queue";
 
 const logger = createLogger("queue");
 
-function redisOptionsFromEnvUrl(urlStr: string): RedisOptions {
+// Parse a redis:// or rediss:// URL into IORedis constructor options.
+// We parse manually (host/port/auth) instead of passing the raw URL string
+// because some ioredis versions mishandle rediss:// URL auth on TLS connections.
+function parseRedisUrl(urlStr: string): RedisOptions {
   let u: URL;
   try {
     u = new URL(urlStr);
   } catch {
-    throw new Error("REDIS_URL is not a valid URL");
+    throw new Error(`REDIS_URL is not a valid URL: ${urlStr}`);
   }
-  const isTls = u.protocol === "rediss:";
-  if (!isTls && u.protocol !== "redis:") {
-    throw new Error('REDIS_URL must use redis:// or rediss:// (Upstash needs rediss://)');
-  }
-  const port = u.port ? parseInt(u.port, 10) : 6379;
-  const username = u.username ? decodeURIComponent(u.username) : undefined;
-  const password = u.password ? decodeURIComponent(u.password) : undefined;
+
+  const isTLS = u.protocol === "rediss:";
 
   return {
     host: u.hostname,
-    port,
-    username: username || undefined,
-    password: password || undefined,
+    port: u.port ? parseInt(u.port, 10) : isTLS ? 6380 : 6379,
+    username: u.username ? decodeURIComponent(u.username) : undefined,
+    password: u.password ? decodeURIComponent(u.password) : undefined,
+    // Do NOT use lazyConnect — let IORedis connect automatically on construction.
+    // BullMQ expects the connection to already be connecting when it receives it.
+    lazyConnect: false,
+    // Required by BullMQ
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
-    connectTimeout: 25_000,
-    lazyConnect: true,
+    connectTimeout: 30_000,
     retryStrategy(times: number) {
-      if (times > 25) return null;
-      return Math.min(times * 300, 5_000);
+      if (times > 20) return null; // stop retrying after 20 attempts
+      return Math.min(times * 250, 3_000);
     },
-    ...(isTls && {
+    ...(isTLS && {
       tls: {
         servername: u.hostname,
         rejectUnauthorized: true,
@@ -45,59 +45,62 @@ function redisOptionsFromEnvUrl(urlStr: string): RedisOptions {
   };
 }
 
-export const redisConnection = new IORedis(redisOptionsFromEnvUrl(config.redis.url));
+// One shared connection — BullMQ and health checks use this same instance.
+// IORedis is safe to share; BullMQ only reads from it, never calls connect/quit.
+export const redisConnection = new IORedis(parseRedisUrl(config.redis.url));
 
-redisConnection.on("connect", () => logger.info("Redis connect (TCP)"));
-redisConnection.on("ready", () => logger.info("Redis ready (handshake complete)"));
-redisConnection.on("error", (err) =>
-  logger.error("Redis error", { error: String(err) })
-);
-
-/** Same instance as redisConnection — health route import. */
+// Alias for health route — same object, different name for clarity at call sites
 export const redisClient = redisConnection;
 
-/** Filled in connectQueue() so BullMQ never runs init/waitUntilReady during module import. */
-export let eventQueue!: Queue<EventJobData>;
-export let deadLetterQueue!: Queue<EventJobData>;
+redisConnection.on("connect", () => logger.info("Redis TCP connected"));
+redisConnection.on("ready",   () => logger.info("Redis ready"));
+redisConnection.on("error",   (err) => logger.error("Redis error", { error: String(err) }));
+redisConnection.on("close",   () => logger.warn("Redis connection closed"));
+redisConnection.on("reconnecting", () => logger.info("Redis reconnecting..."));
 
-let queuesCreated = false;
+// Create BullMQ queues immediately — they will wait internally for the
+// connection to become ready before sending any commands.
+export const eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
+  connection: redisConnection,
+  defaultJobOptions: config.queue.defaultJobOptions,
+});
 
-const REDIS_READY_DEADLINE_MS = 45_000;
+export const deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, {
+  connection: redisConnection,
+});
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => {
-      reject(
-        new Error(
-          `${label} timed out after ${ms}ms — check REDIS_URL is the TLS Redis URL (rediss://… from Upstash "Redis" tab, not REST).`
-        )
-      );
-    }, ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
-
+// Wait for Redis to be genuinely ready before the API starts accepting traffic.
+// Times out after 30s with a helpful message if the URL is wrong.
 export async function connectQueue(): Promise<void> {
-  // connect() waits until ioredis is "ready" (TLS + AUTH + handshake), unlike bare ping under churn.
-  await withTimeout(redisConnection.connect(), REDIS_READY_DEADLINE_MS, "Redis connect");
+  if (redisConnection.status === "ready") {
+    logger.info("Redis already ready");
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(
+          new Error(
+            "Redis did not become ready within 30s. " +
+            "Check that REDIS_URL starts with rediss:// (not redis://) " +
+            "and that you copied the ioredis/CLI URL from Upstash, not the REST URL."
+          )
+        );
+      }, 30_000);
+
+      redisConnection.once("ready", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+
+      redisConnection.once("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+  }
+
+  // Confirm the connection actually works end-to-end
   await redisConnection.ping();
-  eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
-    connection: redisConnection,
-    defaultJobOptions: config.queue.defaultJobOptions,
-  });
-  deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, {
-    connection: redisConnection,
-  });
-  queuesCreated = true;
+
   logger.info("Queue system ready", {
     queue: QUEUE_NAMES.EVENTS,
     deadLetter: QUEUE_NAMES.DEAD_LETTER,
@@ -105,10 +108,7 @@ export async function connectQueue(): Promise<void> {
 }
 
 export async function disconnectQueue(): Promise<void> {
-  if (queuesCreated) {
-    await eventQueue.close();
-    await deadLetterQueue.close();
-    queuesCreated = false;
-  }
+  await eventQueue.close();
+  await deadLetterQueue.close();
   await redisConnection.quit();
 }
