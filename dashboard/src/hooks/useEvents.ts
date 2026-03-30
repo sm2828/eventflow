@@ -68,7 +68,10 @@ export function useEvents(opts: UseEventsOptions = {}) {
     currentPageRef.current = 1;
     fetchPage(1);
 
-    if (opts.autoRefresh !== false) {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = null;
+
+    if (opts.autoRefresh) {
       intervalRef.current = setInterval(
         () => fetchPage(currentPageRef.current),
         POLL_INTERVAL_MS
@@ -78,7 +81,7 @@ export function useEvents(opts: UseEventsOptions = {}) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [opts.status, opts.type, fetchPage]);
+  }, [opts.status, opts.type, opts.autoRefresh, fetchPage]);
 
   const goToPage = (page: number) => fetchPage(page);
 
@@ -129,7 +132,7 @@ export function useMetrics(autoRefresh = true) {
   return { metrics, loading, error, refresh: fetchMetrics };
 }
 
-export function useCharts(windowMinutes: number) {
+export function useCharts(windowMinutes: number, autoRefresh = true) {
   const [data, setData] = useState<ChartData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -147,9 +150,10 @@ export function useCharts(windowMinutes: number) {
   useEffect(() => {
     setLoading(true);
     fetch();
+    if (!autoRefresh) return;
     const interval = setInterval(fetch, 30_000); // charts refresh every 30s
     return () => clearInterval(interval);
-  }, [fetch]);
+  }, [fetch, autoRefresh]);
 
   return { data, loading, refresh: fetch };
 }

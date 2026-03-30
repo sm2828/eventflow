@@ -34,16 +34,17 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [chartWindow, setChartWindow] = useState(60);
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   const { events, total, page, pageSize, loading, error, goToPage, retry, replay, refresh } =
     useEvents({
       status: statusFilter || undefined,
       type: typeFilter || undefined,
-      autoRefresh: mode === "live",
+      autoRefresh: mode === "live" && autoRefresh,
     });
 
-  const { metrics, loading: metricsLoading } = useMetrics(mode === "live");
-  const { data: chartData, loading: chartLoading } = useCharts(chartWindow);
+  const { metrics, loading: metricsLoading } = useMetrics(mode === "live" && autoRefresh);
+  const { data: chartData, loading: chartLoading } = useCharts(chartWindow, mode === "live" && autoRefresh);
 
   useEffect(() => {
     if (!loading) setLastRefreshed(new Date());
@@ -124,7 +125,7 @@ export default function App() {
               Event Stream
             </h1>
             <p style={{ fontSize: 14, color: "#8b949e" }}>
-              Real-time view of all ingested events. Auto-refreshes every 5s.
+              Real-time view of all ingested events.
             </p>
           </div>
 
@@ -152,6 +153,8 @@ export default function App() {
                 onTypeChange={(t) => { setTypeFilter(t); goToPage(1); }}
                 onRefresh={refresh}
                 lastRefreshed={lastRefreshed}
+                autoRefresh={autoRefresh}
+                onAutoRefreshChange={setAutoRefresh}
               />
             </div>
 

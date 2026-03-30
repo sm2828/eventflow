@@ -8,6 +8,8 @@ interface Props {
   onTypeChange: (t: string) => void;
   onRefresh: () => void;
   lastRefreshed: Date | null;
+  autoRefresh: boolean;
+  onAutoRefreshChange: (v: boolean) => void;
 }
 
 const selectStyle: React.CSSProperties = {
@@ -33,6 +35,8 @@ export function Filters({
   onTypeChange,
   onRefresh,
   lastRefreshed,
+  autoRefresh,
+  onAutoRefreshChange,
 }: Props) {
   return (
     <div
@@ -77,11 +81,26 @@ export function Filters({
         ↻ Refresh
       </button>
 
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: 2 }}>
+        <input
+          type="checkbox"
+          checked={autoRefresh}
+          onChange={(e) => onAutoRefreshChange(e.target.checked)}
+        />
+        <span style={{ fontSize: 12, color: autoRefresh ? "#3fb950" : "#8b949e" }}>
+          Auto-refresh
+        </span>
+      </label>
+
       {lastRefreshed && (
         <span style={{ fontSize: 12, color: "#484f58", marginLeft: 4 }}>
           Updated {lastRefreshed.toLocaleTimeString()}
-          {" · "}
-          <span style={{ color: "#3fb950" }}>● auto-refreshing</span>
+          {autoRefresh ? (
+            <>
+              {" · "}
+              <span style={{ color: "#3fb950" }}>● auto-refreshing</span>
+            </>
+          ) : null}
         </span>
       )}
     </div>
