@@ -1,14 +1,15 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Declare build args so Vite can bake them in at build time
-ARG VITE_API_KEY=dev_key_123
+# Both VITE_ vars must be build args — Vite bakes them into the JS bundle at build time
+ARG VITE_API_URL=""
+ARG VITE_API_KEY=portfolio_demo_key
 
 COPY dashboard/package.json ./
 RUN npm install
 COPY dashboard/ .
 
-# Vite reads VITE_* env vars at build time
+ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_API_KEY=$VITE_API_KEY
 RUN npm run build
 

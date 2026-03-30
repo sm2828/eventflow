@@ -40,7 +40,7 @@ EVENTS = [
 ]
 
 def main():
-    print("🚀 Sending 50 random events...\n")
+    print("Sending 50 random events...\n")
     results = {"sent": 0, "failed": 0, "by_type": {}}
 
     for i in range(1, 51):

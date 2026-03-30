@@ -1,0 +1,46 @@
+# render.yaml — defines all Render services in one file
+# Render reads this automatically when you connect your GitHub repo
+
+services:
+  # ── API (Web Service) ───────────────────────────────────────────────────────
+  - type: web
+    name: eventflow-api
+    runtime: docker
+    dockerfilePath: api/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false          # you paste this from Neon
+      - key: REDIS_URL
+        sync: false          # you paste this from Upstash
+      - key: API_KEYS
+        value: dev_key_123,portfolio_demo_key
+      - key: RATE_LIMIT_MAX
+        value: 20
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: CORS_ORIGINS
+        sync: false          # you paste your Vercel dashboard URL here later
+
+  # ── Worker (Background Worker) ──────────────────────────────────────────────
+  - type: worker
+    name: eventflow-worker
+    runtime: docker
+    dockerfilePath: worker/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: WORKER_CONCURRENCY
+        value: 2

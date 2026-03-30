@@ -24,7 +24,12 @@ async function bootstrap() {
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.CORS_ORIGINS?.split(",") ?? "*",
+      // CORS_ORIGINS = comma-separated list of allowed origins
+      // e.g. "https://eventflow.vercel.app,http://localhost:5173"
+      // Leave unset to allow all origins (fine for a public portfolio API)
+      origin: process.env.CORS_ORIGINS
+        ? process.env.CORS_ORIGINS.split(",").map((o) => o.trim())
+        : "*",
       methods: ["GET", "POST", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],
     })

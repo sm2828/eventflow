@@ -1,8 +1,15 @@
 // dashboard/src/lib/api.ts
-const API_KEY = import.meta.env.VITE_API_KEY || "dev_key_123";
+// In dev: VITE_API_URL is empty, Vite proxy handles /api/* -> localhost:3000
+// In prod: VITE_API_URL = "https://your-api.onrender.com" (no trailing slash)
+const API_BASE = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const API_KEY  = import.meta.env.VITE_API_KEY  || "dev_key_123";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
+  // path is always like "/api/events" — strip /api prefix when calling a remote API_BASE
+  const url = API_BASE
+    ? `${API_BASE}${path.replace(/^\/api/, "")}`
+    : path; // dev: Vite proxy handles /api prefix
+  const res = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
