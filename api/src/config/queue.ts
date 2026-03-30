@@ -14,43 +14,50 @@ function buildConnectionOptions(url: string): RedisOptions {
   const isTLS = url.startsWith("rediss://");
   return {
     maxRetriesPerRequest: null, // Required by BullMQ
-    enableReadyCheck: false,    // Required by BullMQ
-    lazyConnect: true,
+    enableReadyCheck: false, // Required by BullMQ; avoids extra INFO round-trips on managed Redis
+    // Eager connect: lazyConnect + two Queue()s both call waitUntilReady() on the same
+    // client during import and can race (connect before ready, then close → "Connection is closed").
+    lazyConnect: false,
+    // Prefer IPv4 from cloud hosts (Render ↔ Upstash) when DNS returns AAAA first.
+    ...(isTLS ? { family: 4 as const } : {}),
     ...(isTLS && {
       tls: {
-        // Upstash certs are valid — rejectUnauthorized:true is safe and correct
         rejectUnauthorized: true,
       },
     }),
   };
 }
 
-// Single shared IORedis for BullMQ + /health (two clients to the same URL
-// caused connect/EPIPE/Connection is closed flapping on managed Redis e.g. Upstash).
 export const redisConnection = new IORedis(
   config.redis.url,
   buildConnectionOptions(config.redis.url)
 );
 
-redisConnection.on("connect", () => logger.info("Redis connected"));
+redisConnection.on("connect", () => logger.info("Redis connect (TCP)"));
+redisConnection.on("ready", () => logger.info("Redis ready (handshake complete)"));
 redisConnection.on("error", (err) =>
   logger.error("Redis error", { error: String(err) })
 );
 
-/** Same instance as redisConnection (health route import). */
+/** Same instance as redisConnection — health route import. */
 export const redisClient = redisConnection;
 
-export const eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
-  connection: redisConnection,
-  defaultJobOptions: config.queue.defaultJobOptions,
-});
+/** Filled in connectQueue() so BullMQ never runs init/waitUntilReady during module import. */
+export let eventQueue!: Queue<EventJobData>;
+export let deadLetterQueue!: Queue<EventJobData>;
 
-export const deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, {
-  connection: redisConnection,
-});
+let queuesCreated = false;
 
 export async function connectQueue(): Promise<void> {
   await redisConnection.ping();
+  eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
+    connection: redisConnection,
+    defaultJobOptions: config.queue.defaultJobOptions,
+  });
+  deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, {
+    connection: redisConnection,
+  });
+  queuesCreated = true;
   logger.info("Queue system ready", {
     queue: QUEUE_NAMES.EVENTS,
     deadLetter: QUEUE_NAMES.DEAD_LETTER,
@@ -58,7 +65,10 @@ export async function connectQueue(): Promise<void> {
 }
 
 export async function disconnectQueue(): Promise<void> {
-  await eventQueue.close();
-  await deadLetterQueue.close();
+  if (queuesCreated) {
+    await eventQueue.close();
+    await deadLetterQueue.close();
+    queuesCreated = false;
+  }
   await redisConnection.quit();
 }
