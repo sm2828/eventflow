@@ -14,12 +14,17 @@ function buildConnectionOptions(url: string): RedisOptions {
   const isTLS = url.startsWith("rediss://");
   return {
     maxRetriesPerRequest: null, // Required by BullMQ
-    enableReadyCheck: false, // Required by BullMQ; avoids extra INFO round-trips on managed Redis
-    // Eager connect: lazyConnect + two Queue()s both call waitUntilReady() on the same
-    // client during import and can race (connect before ready, then close → "Connection is closed").
-    lazyConnect: false,
-    // Prefer IPv4 from cloud hosts (Render ↔ Upstash) when DNS returns AAAA first.
-    ...(isTLS ? { family: 4 as const } : {}),
+    enableReadyCheck: false, // Required by BullMQ
+    // Connect only from connectQueue() after DB — avoids overlapping with Prisma startup
+    // and matches most managed-Redis docs (single client, on-demand connect).
+    lazyConnect: true,
+    connectTimeout: 15_000,
+    commandTimeout: 12_000,
+    // Stop endless reconnect storms (bad REDIS_URL wastes deploy health checks).
+    retryStrategy(times: number) {
+      if (times > 30) return null;
+      return Math.min(times * 250, 4_000);
+    },
     ...(isTLS && {
       tls: {
         rejectUnauthorized: true,
@@ -48,8 +53,32 @@ export let deadLetterQueue!: Queue<EventJobData>;
 
 let queuesCreated = false;
 
+const PING_DEADLINE_MS = 25_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => {
+      reject(
+        new Error(
+          `${label} timed out after ${ms}ms — check REDIS_URL is the TLS Redis URL (rediss://… from Upstash "Redis" tab, not REST).`
+        )
+      );
+    }, ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 export async function connectQueue(): Promise<void> {
-  await redisConnection.ping();
+  await withTimeout(redisConnection.ping(), PING_DEADLINE_MS, "Redis PING");
   eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
     connection: redisConnection,
     defaultJobOptions: config.queue.defaultJobOptions,
