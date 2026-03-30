@@ -10,11 +10,21 @@ import { processEvent } from "./processors/event.processor";
 
 const logger = createLogger("inline-worker");
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "2", 10);
+const STALLED_INTERVAL_MS = parseInt(
+  process.env.WORKER_STALLED_INTERVAL_MS ||
+    (process.env.NODE_ENV === "production" ? "300000" : "30000"),
+  10
+);
+const MAX_STALLED_COUNT = parseInt(process.env.WORKER_MAX_STALLED_COUNT || "1", 10);
 
 export async function startInlineWorker(prisma: PrismaClient): Promise<{
   shutdown: () => Promise<void>;
 }> {
-  logger.info("Starting inline worker", { concurrency: CONCURRENCY });
+  logger.info("Starting inline worker", {
+    concurrency: CONCURRENCY,
+    stalledIntervalMs: STALLED_INTERVAL_MS,
+    maxStalledCount: MAX_STALLED_COUNT,
+  });
 
   const worker = new Worker(
     QUEUE_NAMES.EVENTS,
@@ -24,8 +34,8 @@ export async function startInlineWorker(prisma: PrismaClient): Promise<{
     {
       connection: redisConnection,
       concurrency: CONCURRENCY,
-      stalledInterval: 30_000,
-      maxStalledCount: 1,
+      stalledInterval: STALLED_INTERVAL_MS,
+      maxStalledCount: MAX_STALLED_COUNT,
     }
   );
 
