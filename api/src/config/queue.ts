@@ -1,25 +1,51 @@
 // api/src/config/queue.ts
 import { Queue } from "bullmq";
 import IORedis, { type RedisOptions } from "ioredis";
+import { URL } from "url";
 import { config } from "./index";
 import { createLogger } from "../../../shared/src/utils/logger";
 import { QUEUE_NAMES, EventJobData } from "../../../shared/src/types/queue";
 
 const logger = createLogger("queue");
 
-// Match worker: BullMQ flags only. For rediss://, ioredis enables TLS from the URL; do not pass
-// tls:{} unless you set servername — an empty tls object can break SNI and drop the socket after TCP connect.
-const redisOptions: RedisOptions = {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-  connectTimeout: 20_000,
-  retryStrategy(times: number) {
-    if (times > 30) return null;
-    return Math.min(times * 250, 4_000);
-  },
-};
+function redisOptionsFromEnvUrl(urlStr: string): RedisOptions {
+  let u: URL;
+  try {
+    u = new URL(urlStr);
+  } catch {
+    throw new Error("REDIS_URL is not a valid URL");
+  }
+  const isTls = u.protocol === "rediss:";
+  if (!isTls && u.protocol !== "redis:") {
+    throw new Error('REDIS_URL must use redis:// or rediss:// (Upstash needs rediss://)');
+  }
+  const port = u.port ? parseInt(u.port, 10) : 6379;
+  const username = u.username ? decodeURIComponent(u.username) : undefined;
+  const password = u.password ? decodeURIComponent(u.password) : undefined;
 
-export const redisConnection = new IORedis(config.redis.url, redisOptions);
+  return {
+    host: u.hostname,
+    port,
+    username: username || undefined,
+    password: password || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    connectTimeout: 25_000,
+    lazyConnect: true,
+    retryStrategy(times: number) {
+      if (times > 25) return null;
+      return Math.min(times * 300, 5_000);
+    },
+    ...(isTls && {
+      tls: {
+        servername: u.hostname,
+        rejectUnauthorized: true,
+      },
+    }),
+  };
+}
+
+export const redisConnection = new IORedis(redisOptionsFromEnvUrl(config.redis.url));
 
 redisConnection.on("connect", () => logger.info("Redis connect (TCP)"));
 redisConnection.on("ready", () => logger.info("Redis ready (handshake complete)"));
