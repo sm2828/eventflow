@@ -25,40 +25,20 @@ function buildConnectionOptions(url: string): RedisOptions {
   };
 }
 
-function buildClientOptions(url: string): RedisOptions {
-  const isTLS = url.startsWith("rediss://");
-  return {
-    maxRetriesPerRequest: 3,
-    enableReadyCheck: true,
-    lazyConnect: true,
-    ...(isTLS && {
-      tls: {
-        rejectUnauthorized: true,
-      },
-    }),
-  };
-}
-
-// BullMQ manages this connection — do NOT call .connect() on it manually.
+// Single shared IORedis for BullMQ + /health (two clients to the same URL
+// caused connect/EPIPE/Connection is closed flapping on managed Redis e.g. Upstash).
 export const redisConnection = new IORedis(
   config.redis.url,
   buildConnectionOptions(config.redis.url)
 );
 
-// Separate client for health checks — we manage this one ourselves.
-export const redisClient = new IORedis(
-  config.redis.url,
-  buildClientOptions(config.redis.url)
+redisConnection.on("connect", () => logger.info("Redis connected"));
+redisConnection.on("error", (err) =>
+  logger.error("Redis error", { error: String(err) })
 );
 
-redisConnection.on("connect", () => logger.info("Redis (queue) connected"));
-redisConnection.on("error", (err) =>
-  logger.error("Redis (queue) error", { error: String(err) })
-);
-redisClient.on("connect", () => logger.info("Redis (client) connected"));
-redisClient.on("error", (err) =>
-  logger.error("Redis (client) error", { error: String(err) })
-);
+/** Same instance as redisConnection (health route import). */
+export const redisClient = redisConnection;
 
 export const eventQueue = new Queue<EventJobData>(QUEUE_NAMES.EVENTS, {
   connection: redisConnection,
@@ -70,7 +50,7 @@ export const deadLetterQueue = new Queue<EventJobData>(QUEUE_NAMES.DEAD_LETTER, 
 });
 
 export async function connectQueue(): Promise<void> {
-  await redisClient.connect();
+  await redisConnection.ping();
   logger.info("Queue system ready", {
     queue: QUEUE_NAMES.EVENTS,
     deadLetter: QUEUE_NAMES.DEAD_LETTER,
@@ -81,5 +61,4 @@ export async function disconnectQueue(): Promise<void> {
   await eventQueue.close();
   await deadLetterQueue.close();
   await redisConnection.quit();
-  await redisClient.quit();
 }
