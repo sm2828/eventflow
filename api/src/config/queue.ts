@@ -7,37 +7,19 @@ import { QUEUE_NAMES, EventJobData } from "../../../shared/src/types/queue";
 
 const logger = createLogger("queue");
 
-// Upstash (and other TLS Redis providers) use rediss:// URLs.
-// IORedis needs explicit tls:{} options when connecting over TLS,
-// otherwise it connects, immediately gets a TLS error, and closes.
-function buildConnectionOptions(url: string): RedisOptions {
-  const isTLS = url.startsWith("rediss://");
-  return {
-    maxRetriesPerRequest: null, // Required by BullMQ
-    enableReadyCheck: false, // Required by BullMQ
-    // Connect only from connectQueue() after DB — avoids overlapping with Prisma startup
-    // and matches most managed-Redis docs (single client, on-demand connect).
-    lazyConnect: true,
-    connectTimeout: 20_000,
-    // No commandTimeout: on flaky reconnects it aborts PING mid-handshake and surfaces as
-    // "Command timed out" (ioredis Command.js) instead of completing or our outer deadline firing.
-    // Stop endless reconnect storms (bad REDIS_URL wastes deploy health checks).
-    retryStrategy(times: number) {
-      if (times > 30) return null;
-      return Math.min(times * 250, 4_000);
-    },
-    ...(isTLS && {
-      tls: {
-        rejectUnauthorized: true,
-      },
-    }),
-  };
-}
+// Match worker: BullMQ flags only. For rediss://, ioredis enables TLS from the URL; do not pass
+// tls:{} unless you set servername — an empty tls object can break SNI and drop the socket after TCP connect.
+const redisOptions: RedisOptions = {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  connectTimeout: 20_000,
+  retryStrategy(times: number) {
+    if (times > 30) return null;
+    return Math.min(times * 250, 4_000);
+  },
+};
 
-export const redisConnection = new IORedis(
-  config.redis.url,
-  buildConnectionOptions(config.redis.url)
-);
+export const redisConnection = new IORedis(config.redis.url, redisOptions);
 
 redisConnection.on("connect", () => logger.info("Redis connect (TCP)"));
 redisConnection.on("ready", () => logger.info("Redis ready (handshake complete)"));
