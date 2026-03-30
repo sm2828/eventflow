@@ -102,21 +102,6 @@ export default function App() {
             <Logo />
             <ModeToggle mode={mode} onChange={setMode} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <a
-              href="http://localhost:3000/health"
-              target="_blank" rel="noreferrer"
-              style={{ fontSize: 12, color: "#8b949e", textDecoration: "none" }}
-            >
-              API Health ↗
-            </a>
-            <code style={{
-              fontSize: 11, color: "#484f58",
-              background: "#161b22", padding: "3px 8px", borderRadius: 4,
-            }}>
-              localhost:3000
-            </code>
-          </div>
         </nav>
 
         <main style={{ padding: "24px", maxWidth: 1280, margin: "0 auto" }}>
@@ -186,20 +171,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick start */}
-          <div style={{
-            marginTop: 24, padding: 16,
-            background: "#161b22", border: "1px solid #30363d",
-            borderRadius: 8, fontSize: 12, color: "#8b949e",
-          }}>
-            <strong style={{ color: "#e1e4e8" }}>Quick start: </strong>
-            <code style={{
-              background: "#21262d", padding: "2px 8px",
-              borderRadius: 4, color: "#79c0ff", fontSize: 11,
-            }}>
-              {`curl -X POST http://localhost:3000/events -H "Authorization: Bearer dev_key_123" -H "Content-Type: application/json" -d '{"type":"user.signup","payload":{"email":"test@example.com"}}'`}
-            </code>
-          </div>
         </main>
       </div>
 
