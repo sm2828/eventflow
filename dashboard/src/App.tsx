@@ -7,6 +7,7 @@ import { Filters } from "./components/Filters";
 import { Pagination } from "./components/Pagination";
 import { ChartsBar } from "./components/ChartsBar";
 import { ReplayMode } from "./components/ReplayMode";
+import { TestEventsButton } from "./components/TestEventsButton";
 import { useEvents, useMetrics, useCharts } from "./hooks/useEvents";
 import { Event } from "./lib/api";
 
@@ -34,7 +35,7 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [chartWindow, setChartWindow] = useState(60);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   const { events, total, page, pageSize, loading, error, goToPage, retry, replay, refresh } =
     useEvents({
@@ -43,8 +44,8 @@ export default function App() {
       autoRefresh: mode === "live" && autoRefresh,
     });
 
-  const { metrics, loading: metricsLoading } = useMetrics(mode === "live" && autoRefresh);
-  const { data: chartData, loading: chartLoading } = useCharts(chartWindow, mode === "live" && autoRefresh);
+  const { metrics, loading: metricsLoading } = useMetrics(mode === "live");
+  const { data: chartData, loading: chartLoading } = useCharts(chartWindow);
 
   useEffect(() => {
     if (!loading) setLastRefreshed(new Date());
@@ -102,6 +103,21 @@ export default function App() {
             <Logo />
             <ModeToggle mode={mode} onChange={setMode} />
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <TestEventsButton onDone={refresh} />
+            <a
+              href="http://localhost:3000/health"
+              target="_blank" rel="noreferrer"
+              style={{ fontSize: 12, color: "#8b949e", textDecoration: "none" }}
+            >
+              API Health ↗
+            </a>
+            <code style={{
+              fontSize: 11, color: "#484f58",
+              background: "#161b22", padding: "3px 8px", borderRadius: 4,
+            }}>
+            </code>
+          </div>
         </nav>
 
         <main style={{ padding: "24px", maxWidth: 1280, margin: "0 auto" }}>
@@ -110,7 +126,7 @@ export default function App() {
               Event Stream
             </h1>
             <p style={{ fontSize: 14, color: "#8b949e" }}>
-              Real-time view of all ingested events.
+              Real-time view of all ingested events. Auto-refreshes every 5s.
             </p>
           </div>
 

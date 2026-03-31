@@ -103,6 +103,14 @@ export interface ReplayChain {
 
 export const api = {
   events: {
+    create: (type: string, payload: Record<string, unknown>) =>
+      request<{ id: string; jobId: string; status: string }>(
+        `/api/events`,
+        {
+          method: "POST",
+          body: JSON.stringify({ type, payload }),
+        }
+      ),
     list: (params: { page?: number; pageSize?: number; status?: string; type?: string }) => {
       const qs = new URLSearchParams();
       if (params.page) qs.set("page", String(params.page));
