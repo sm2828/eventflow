@@ -75,16 +75,6 @@ metrics:
 		-H "Authorization: Bearer dev_key_123" \
 		| python3 -m json.tool
 
-test-rate-limit:
-	@for i in $$(seq 1 110); do \
-		curl -s -o /dev/null -w "Request $$i: %{http_code}\n" \
-			http://localhost:3000/events \
-			-X POST \
-			-H "Authorization: Bearer dev_key_123" \
-			-H "Content-Type: application/json" \
-			-d '{"type":"test","payload":{}}'; \
-	done
-
 # ── Random 50-event stress test ───────────────────────────────────────────────
 # Fires 50 events with randomised types, realistic payloads, and alternating API keys.
 # Every run is different. Watch http://localhost:5173 while it runs.

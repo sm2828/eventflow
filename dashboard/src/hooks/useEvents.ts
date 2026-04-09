@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api, Event, EventListResponse, Metrics, ChartData } from "../lib/api";
 
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 1000;
 
 interface UseEventsState {
   events: Event[];

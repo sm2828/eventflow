@@ -1,13 +1,49 @@
 import React, { useState } from "react";
 import { api } from "../lib/api";
 
-const TEST_EVENTS = [
-  { type: "user.signup",       payload: { email: "demo@example.com", plan: "pro" } },
-  { type: "order.created",     payload: { orderId: "ord_demo", amount: 49.99, currency: "USD" } },
-  { type: "payment.processed", payload: { transactionId: "txn_demo", amount: 49.99, status: "success" } },
-  { type: "user.login",        payload: { email: "demo@example.com", device: "desktop" } },
-  { type: "order.shipped",     payload: { orderId: "ord_demo", carrier: "FedEx", trackingId: "TRK123" } },
+const TEST_EVENTS_POOL = [
+  // User events (valid)
+  { type: "user.signup",       payload: { email: "user1@example.com", plan: "pro", source: "organic" } },
+  { type: "user.login",        payload: { email: "user2@example.com", device: "mobile", ip: "192.168.1.1" } },
+  { type: "user.logout",       payload: { email: "user3@example.com", sessionDuration: 3600 } },
+  { type: "user.updated",      payload: { userId: "usr_abc123", fields: ["email", "name"], source: "user" } },
+  { type: "user.deleted",      payload: { userId: "usr_xyz789", reason: "requested", deletedAt: new Date().toISOString() } },
+  
+  // User event - INVALID: missing email (triggers validation error)
+  { type: "user.signup",       payload: { userId: "usr_fail_001", plan: "pro" } },
+  
+  // Order events (valid)
+  { type: "order.created",     payload: { orderId: "ord_001", userId: "usr_123", amount: 99.99, currency: "USD", items: 3 } },
+  { type: "order.updated",     payload: { orderId: "ord_002", status: "confirmed", updatedAt: new Date().toISOString() } },
+  { type: "order.shipped",     payload: { orderId: "ord_003", carrier: "FedEx", trackingId: "TRK12345", weight: 2.5 } },
+  { type: "order.delivered",   payload: { orderId: "ord_004", userId: "usr_456", deliveredAt: new Date().toISOString() } },
+  { type: "order.cancelled",   payload: { orderId: "ord_005", reason: "customer_request", refundAmount: 89.99 } },
+  
+  // Payment events (valid - including ~5% failure rate from processor)
+  { type: "payment.processed", payload: { transactionId: "txn_001", amount: 49.99, status: "success", method: "card" } },
+  { type: "payment.processed", payload: { transactionId: "txn_002", amount: 29.99, status: "success", method: "paypal" } },
+  { type: "payment.processed", payload: { transactionId: "txn_003", amount: 199.99, status: "success", method: "card" } },
+  
+  // Inventory events
+  { type: "inventory.updated", payload: { sku: "SKU-12345", delta: -5, warehouse: "US-EAST", quantity: 150 } },
+  { type: "inventory.low",     payload: { sku: "SKU-67890", currentStock: 10, threshold: 20, warehouse: "EU-WEST" } },
+  { type: "inventory.restocked", payload: { sku: "SKU-11111", quantity: 500, source: "supplier", purchaseOrderId: "PO-999" } },
+  
+  // Notification events
+  { type: "notification.sent", payload: { notificationId: "ntf_001", userId: "usr_789", channel: "email", type: "welcome" } },
+  { type: "notification.clicked", payload: { notificationId: "ntf_002", userId: "usr_890", linkId: "lnk_123", campaign: "summer_sale" } },
+  
+  // Session events
+  { type: "session.started",   payload: { sessionId: "ses_001", userId: "usr_111", device: "desktop", os: "macOS" } },
+  { type: "session.ended",     payload: { sessionId: "ses_002", duration: 1800, pagesViewed: 15, bounced: false } },
+  
+  // Analytics events
+  { type: "page.viewed",       payload: { pageId: "page_001", userId: "usr_222", path: "/products", referrer: "google" } },
+  { type: "product.viewed",    payload: { productId: "prd_001", userId: "usr_333", category: "electronics", price: 299.99 } },
+  { type: "cart.updated",      payload: { cartId: "cart_001", userId: "usr_444", itemCount: 5, totalAmount: 450.00 } },
 ];
+
+const NUM_TEST_EVENTS = 5;
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -15,6 +51,22 @@ interface SentEvent {
   type: string;
   id: string;
   ok: boolean;
+}
+
+function getRandomEvents(count: number) {
+  // Always include at least one intentional failure for demo purposes
+  const failureEvent = TEST_EVENTS_POOL.find(e => e.type === "user.signup" && !e.payload.email);
+  const failureEvents = failureEvent ? [failureEvent] : [];
+  
+  const remaining = TEST_EVENTS_POOL.filter(e => !failureEvents.includes(e));
+  const shuffled = remaining.sort(() => Math.random() - 0.5);
+  
+  const selected = [
+    ...failureEvents.slice(0, Math.min(failureEvents.length, Math.floor(count / 2))),
+    ...shuffled.slice(0, count - Math.min(failureEvents.length, Math.floor(count / 2))),
+  ];
+  
+  return selected.slice(0, count);
 }
 
 export function TestEventsButton({ onDone }: { onDone?: () => void }) {
@@ -27,7 +79,10 @@ export function TestEventsButton({ onDone }: { onDone?: () => void }) {
     setSent([]);
     setOpen(true);
 
-    for (const evt of TEST_EVENTS) {
+    const selectedEvents = getRandomEvents(NUM_TEST_EVENTS);
+
+    for (const evt of selectedEvents) {
+      if (!evt) continue;
       // randomise the payload slightly so each run creates distinct events
       const payload = {
         ...evt.payload,
@@ -82,7 +137,7 @@ export function TestEventsButton({ onDone }: { onDone?: () => void }) {
         }}
       >
         {status === "running"
-          ? `⏳ Sending ${sent.length + 1}/${TEST_EVENTS.length}…`
+          ? `⏳ Sending ${sent.length}/${NUM_TEST_EVENTS}…`
           : status === "done"
           ? "✓ Sent — run again?"
           : "⚡ Send events"}
