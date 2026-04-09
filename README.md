@@ -14,11 +14,11 @@ POST /events  →  Redis Queue  →  Worker  →  PostgreSQL
 
 ```
 eventflow/
-├── api/            Express API — ingestion, auth, rate limiting
+├── api/            Express API — ingestion, auth
 │   └── src/
 │       ├── config/         DB + Redis + Queue clients
 │       ├── controllers/    Request handlers
-│       ├── middleware/     Auth, rate limiting, error handling
+│       ├── middleware/     Auth, error handling
 │       ├── routes/         Route definitions
 │       └── services/       Business logic (EventService)
 ├── worker/         BullMQ worker — processes queued jobs
@@ -139,7 +139,6 @@ make logs            # All service logs
 make logs-api        # API logs only
 make logs-worker     # Worker logs only
 make list-events     # Show latest 5 events
-make test-rate-limit # Trigger rate limiting (sends 110 requests)
 make down            # Stop services
 make down-v          # Stop services + delete volumes
 ```

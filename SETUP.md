@@ -167,7 +167,7 @@ Two keys are pre-configured (set in `.env`):
 
 Pass as: `Authorization: Bearer dev_key_123`
 
-Rate limit: 100 requests per minute per key.
+No rate limit is enforced for API requests.
 
 ---
 

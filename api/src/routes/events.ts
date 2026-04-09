@@ -2,12 +2,10 @@
 import { Router } from "express";
 import { eventController } from "../controllers/event.controller";
 import { authenticate } from "../middleware/auth";
-import { apiRateLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
 router.use(authenticate);
-router.use(apiRateLimiter);
 
 // Ingest
 router.post("/", (req, res) => eventController.create(req as any, res));

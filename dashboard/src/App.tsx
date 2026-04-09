@@ -36,6 +36,7 @@ export default function App() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [chartWindow, setChartWindow] = useState(60);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showStartupNotice, setShowStartupNotice] = useState(true);
 
   const { events, total, page, pageSize, loading, error, goToPage, retry, replay, refresh } =
     useEvents({
@@ -105,18 +106,6 @@ export default function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <TestEventsButton onDone={refresh} />
-            <a
-              href="http://localhost:3000/health"
-              target="_blank" rel="noreferrer"
-              style={{ fontSize: 12, color: "#8b949e", textDecoration: "none" }}
-            >
-              API Health ↗
-            </a>
-            <code style={{
-              fontSize: 11, color: "#484f58",
-              background: "#161b22", padding: "3px 8px", borderRadius: 4,
-            }}>
-            </code>
           </div>
         </nav>
 
@@ -189,6 +178,61 @@ export default function App() {
 
         </main>
       </div>
+
+      {showStartupNotice && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.55)", padding: 24,
+        }}>
+          <div style={{
+            width: "100%", maxWidth: 520, borderRadius: 16,
+            background: "#0d1117", border: "1px solid #30363d",
+            boxShadow: "0 18px 60px rgba(0,0,0,0.45)", padding: 24,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 20, color: "#e1e4e8" }}>
+                  Backend Startup Notice
+                </h2>
+                <p style={{ margin: "8px 0 0", color: "#8b949e", fontSize: 13 }}>
+                  Please allow about 30 seconds for backend services to spin up after loading this page.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowStartupNotice(false)}
+                style={{
+                  color: "#8b949e", background: "transparent", border: "none",
+                  cursor: "pointer", fontSize: 16, fontWeight: 700,
+                }}
+                aria-label="Close startup notice"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ color: "#c9d1d9", fontSize: 14, lineHeight: 1.7 }}>
+              <p>
+                The dashboard may take a short moment to connect while the backend and worker services initialize.
+              </p>
+              <p>
+                Note: the free plan limits usage and may impact startup times or request reliability.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button
+                onClick={() => setShowStartupNotice(false)}
+                style={{
+                  padding: "10px 16px", borderRadius: 8,
+                  background: "#238636", color: "#f0f6fc", border: "none",
+                  cursor: "pointer", fontWeight: 600,
+                }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <EventDetail
         event={selectedEvent}
